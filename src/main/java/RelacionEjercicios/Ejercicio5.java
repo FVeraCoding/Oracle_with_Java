@@ -1,6 +1,8 @@
 package RelacionEjercicios;
 
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import oracle.jdbc.OracleConnection;
@@ -21,7 +23,11 @@ public class Ejercicio5 {
             //insertarDireccion(con);
             //leerInformacion(con);
             //infoMalaga(con);
-            ochenteros(con);
+            //ochenteros(con);
+            //directivos(con);
+            //preCovid(con); No devuelve nada porque todos los grupos se han creado en 2024.
+            //añadirDirectivo(con);
+            //eliminarDirectivo(con);
         } catch (SQLException ex) {
             Logger.getLogger(Ejercicio5.class.getName()).log(Level.SEVERE, null, ex);
         }
@@ -206,10 +212,9 @@ public class Ejercicio5 {
         while (rs.next()) {
             int idGrupo = rs.getInt(1);
             String nombreGrupo = rs.getString(2);
-            int codPers = rs.getInt(3);  
-            String nombre = rs.getString(4); 
+            int codPers = rs.getInt(3);
+            String nombre = rs.getString(4);
 
-            
             Struct direccion = (Struct) rs.getObject(5);
             Object[] dAtrib = direccion.getAttributes();
             String calle = (String) dAtrib[0];
@@ -225,18 +230,115 @@ public class Ejercicio5 {
 
         }
     }
-    
-    public static void ochenteros(Connection con) throws SQLException{
+
+    public static void ochenteros(Connection con) throws SQLException {
         PreparedStatement consulta = con.prepareStatement("SELECT G.NOMBRE, P.NOMBRE, P.FECHA_NAC FROM GRUPOS2 G, TABLE(G.PERSONAS) P WHERE P.FECHA_NAC < TO_DATE('1990-01-01', 'YYYY-MM-DD')");
         ResultSet rs = consulta.executeQuery();
-        
-        while(rs.next()){
+
+        while (rs.next()) {
             String grupo = rs.getString(1);
             String nombrePers = rs.getString(2);
             Timestamp fNac = rs.getTimestamp(3);
-            
-            System.out.println("Grupo: "+grupo+" | Nombre Persona: "+ nombrePers+ " F.Nac: "+fNac);
+
+            System.out.println("Grupo: " + grupo + " | Nombre Persona: " + nombrePers + " F.Nac: " + fNac);
         }
-                
+    }
+
+    public static void directivos(Connection con) throws SQLException {
+        PreparedStatement consulta = con.prepareStatement("SELECT G.NOMBRE, P.DIREC.CALLE, P.DIREC.CIUDAD, P.DIREC.CODIGO_POST"
+                + " FROM GRUPOS2 G, TABLE(G.PERSONAS) P WHERE G.NOMBRE = 'DIRECCION'");
+
+        ResultSet rs = consulta.executeQuery();
+
+        while (rs.next()) {
+            String nombreGrupo = rs.getString(1);
+            String calle = rs.getString(2);
+            String ciudad = rs.getString(3);
+            int codPostal = rs.getInt(4);
+
+            System.out.println(nombreGrupo + " | " + calle + " | " + ciudad + " | " + codPostal);
+        }
+    }
+
+    public static void preCovid(Connection con) throws SQLException {
+        PreparedStatement consulta = con.prepareStatement("SELECT G.NOMBRE, G.FECHA_CREACION, P.NOMBRE, P.FECHA_NAC FROM GRUPOS2 G, TABLE(G.PERSONAS) P WHERE G.FECHA_CREACION < TO_DATE('2020-01-01', 'YYYY-MM-DD')");
+        ResultSet rs = consulta.executeQuery();
+
+        while (rs.next()) {
+            String nombreCurso = rs.getString(1);
+            Timestamp fCreac = rs.getTimestamp(2);
+            String nombre = rs.getString(3);
+            Timestamp fNac = rs.getTimestamp(4);
+
+            System.out.println("Curso: " + nombreCurso + " | Fecha de creacion: " + fCreac + " | Persona: " + nombre + " | F.Nac: " + fNac);
+        }
+    }
+
+    // Añadir persona a Direccion.
+    public static void añadirDirectivo(Connection con) throws SQLException {
+        PreparedStatement consulta = con.prepareStatement("SELECT P.* FROM GRUPOS2 G, TABLE(G.PERSONAS) P WHERE G.NOMBRE = 'DIRECCION'");
+        ResultSet rs = consulta.executeQuery();
+        OracleConnection oraCon = con.unwrap(OracleConnection.class);
+        List<Object> listaPersonas = new ArrayList<>();
+        
+        while(rs.next()){
+            int codigo = rs.getInt(1);
+            String nombre = rs.getString(2);
+            
+            Struct direccion = (Struct) rs.getObject(3);
+            
+            Timestamp fNac = rs.getTimestamp(4);
+            
+            Struct persona = con.createStruct("PERSONA", new Object[]{codigo, nombre, direccion, fNac});
+            
+            listaPersonas.add(persona);
+        }
+        
+        Struct dir = con.createStruct("DIRECCION", new Object[]{"C/Inventada", "Caceres", 54839});
+        Struct persona = con.createStruct("PERSONA", new Object[]{1000, "PepeLui", dir, Date.valueOf("1987-03-12")});
+        
+        listaPersonas.add(persona);
+        
+        Object[] arrayAct = listaPersonas.toArray();
+        ArrayDescriptor descriptor = ArrayDescriptor.createDescriptor("T_PERSONAS", oraCon);
+        ARRAY arrayPersonas = new ARRAY(descriptor, oraCon, arrayAct);
+        
+        PreparedStatement actualizar = con.prepareStatement("UPDATE GRUPOS2 G SET G.PERSONAS = ? WHERE G.NOMBRE = 'DIRECCION'");
+        actualizar.setArray(1, arrayPersonas);
+        
+        int a = actualizar.executeUpdate();
+        System.out.println("Filas actualizadas: "+a);
+    }
+    
+    //Eliminar directivo con código 8. Como no hay uno con 8, voy a eliminar el que tiene codigo 1000 que he añadido anteriormente.
+    public static void eliminarDirectivo(Connection con) throws SQLException{
+        PreparedStatement consulta = con.prepareStatement("SELECT P.* FROM GRUPOS2 G, TABLE(G.PERSONAS) P WHERE G.NOMBRE = 'DIRECCION'");
+        ResultSet rs = consulta.executeQuery();
+        List<Object> listaPers = new ArrayList();
+        
+        while(rs.next()){
+            int codigo = rs.getInt(1);
+            String nombre = rs.getString(2);
+            Struct direccion = (Struct) rs.getObject(3);
+            Timestamp fNac = rs.getTimestamp(4);
+            
+            if(codigo != 1000){
+                Struct persona = con.createStruct("PERSONA", new Object[]{codigo, nombre, direccion, fNac});
+                listaPers.add(persona);
+            }
+        }
+        OracleConnection oraCon = con.unwrap(OracleConnection.class);
+        Object[] arrayAct = listaPers.toArray();
+        ArrayDescriptor descriptor = ArrayDescriptor.createDescriptor("T_PERSONAS", oraCon);
+        ARRAY arrayPersonas = new ARRAY(descriptor, oraCon, arrayAct);
+        
+        PreparedStatement update = con.prepareStatement("UPDATE GRUPOS2 G SET G.PERSONAS = ? WHERE G.NOMBRE = 'DIRECCION'");
+        update.setArray(1, arrayPersonas);
+        
+        int filasActualizadas = update.executeUpdate();
+        
+        System.out.println("Filas actualizadas: "+filasActualizadas);
+        
+        
     }
 }
